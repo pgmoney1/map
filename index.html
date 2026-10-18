@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Agent Deployment Viewer — by Product Line</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/esri-leaflet/3.0.12/esri-leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8/dist/umd/supabase.min.js"></script>
+
+<style>
+  :root{
+    --panel:#18212e; --panel-2:#202b3a; --edge:#3a4a60; --ink:#e9edf3;
+    --ink-dim:#9fb0c4; --brass:#c8a24b; --brass-soft:#c8a24b26; --hdr:46px; --ftr:40px;
+    --overlap:#ffdd33;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#0d1218;color:var(--ink)}
+  #map{position:absolute;top:var(--hdr);bottom:var(--ftr);left:0;right:0;z-index:0;background:#0d1218}
+
+  .label{font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--ink-dim);
+    margin:0 0 9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .seg{display:flex;border:1px solid var(--edge);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;appearance:none;border:0;background:transparent;color:var(--ink-dim);
+    padding:8px 6px;font-size:12.5px;font-weight:550;cursor:pointer;transition:.15s}
+  .seg button + button{border-left:1px solid var(--edge)}
+  .seg button.on{background:var(--brass-soft);color:var(--ink)}
+  .seg button:hover{color:var(--ink)}
+
+  .row{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px}
+  .row + .row{border-top:1px dashed #ffffff10}
+  .row label{flex:1;cursor:pointer}
+  .switch{position:relative;width:38px;height:22px;flex:0 0 auto}
+  .switch input{opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .track{position:absolute;inset:0;background:#33425730;border:1px solid var(--edge);border-radius:20px;transition:.18s;pointer-events:none}
+  .knob{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--ink-dim);transition:.18s;pointer-events:none}
+  .switch input:checked ~ .track{background:var(--brass-soft);border-color:var(--brass)}
+  .switch input:checked ~ .knob{left:19px;background:var(--brass)}
+
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:7px;vertical-align:baseline;transform:translateY(1px)}
+  .sw-county{background:transparent;border:2px solid var(--brass)}
+  .sw-zip{background:#ff2e8833;border:2px solid #ff2e88}
+  .sw-terr{background:linear-gradient(135deg,#e6194B 0 50%,#4363d8 50% 100%);border:1px solid #0006}
+
+  .slider{width:100%;accent-color:var(--brass);margin-top:2px}
+  .slider.zip{accent-color:#ff2e88}
+  .slabel{display:flex;justify-content:space-between;align-items:baseline}
+  .slabel span:last-child{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--ink)}
+
+  .tmode-btn{width:100%;appearance:none;border:1px solid var(--edge);background:transparent;color:var(--ink);
+    padding:9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+  .tmode-btn:hover{border-color:var(--brass)}
+  .tmode-btn.on{background:#ff2e8822;border-color:#ff2e88;color:#ffd6e8}
+  .tmode-btn .pip{width:8px;height:8px;border-radius:50%;background:#6b7889}
+  .tmode-btn.on .pip{background:#ff2e88;box-shadow:0 0 8px #ff2e88}
+
+  .addrow{display:flex;gap:6px;margin-top:10px}
+  .addrow input{flex:1;min-width:0;background:#0e1620;border:1px solid var(--edge);color:var(--ink);border-radius:7px;padding:7px 9px;font-size:12.5px}
+  .addrow input:focus{outline:none;border-color:var(--brass)}
+  .addrow button{border:1px solid var(--edge);background:var(--brass-soft);color:var(--ink);border-radius:7px;padding:0 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .addrow button:hover{border-color:var(--brass)}
+
+  .slist{margin-top:11px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding-right:4px}
+  .slist.scrollable{border-bottom:1px solid var(--edge);padding-bottom:4px}
+  .sempty{font-size:11.5px;color:var(--ink-dim);font-style:italic;margin-top:9px}
+
+  .agent{border:1px solid var(--edge);border-radius:8px;padding:7px 9px;transition:.13s}
+  .agent:hover{background:#ffffff06}
+  .agent.active{border-color:var(--brass);background:var(--brass-soft)}
+  .agent-top{display:flex;align-items:center;gap:9px;cursor:pointer}
+  .agent-top .dotc{position:relative;width:14px;height:14px;border-radius:3px;flex:0 0 auto;border:1px solid #0006;cursor:pointer;display:inline-block}
+  .agent-top .dotc:hover{box-shadow:0 0 0 2px var(--brass)}
+  .agent-top .dotc .cpick{position:absolute;inset:0;opacity:0;width:100%;height:100%;border:0;padding:0;cursor:pointer}
+  .agent-top .nm{flex:0 1 auto;min-width:0;font-size:12.5px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .agent-top .ct{margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--ink-dim);white-space:nowrap}
+  .agent-top .ovl{color:var(--overlap)}
+  .agent-top .rm{color:var(--ink-dim);font-size:15px;line-height:1;padding:0 2px;border:0;background:none;cursor:pointer}
+  .agent-top .rm:hover{color:#ff6b6b}
+  .agent-top .edit{color:var(--ink-dim);font-size:12px;line-height:1;padding:0 3px;border:0;background:none;cursor:pointer}
+  .agent-top .edit:hover{color:var(--brass)}
+  .agent-metrics{display:flex;gap:8px;margin-top:7px}
+  .agent-metrics label{flex:1;display:flex;flex-direction:column;gap:3px;font-size:9px;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--ink-dim);font-family:ui-monospace,Menlo,monospace}
+  .agent-metrics input{background:#0e1620;border:1px solid var(--edge);color:var(--ink);border-radius:6px;
+    padding:5px 7px;font-size:12px;font-family:ui-monospace,Menlo,monospace;width:100%}
+  .agent-metrics input:focus{outline:none;border-color:var(--brass)}
+  .cmt{margin-top:8px}
+  .cmt label{display:block;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-dim);font-family:ui-monospace,Menlo,monospace;margin-bottom:3px}
+  .cmt textarea{width:100%;resize:vertical;min-height:34px;background:#0e1620;border:1px solid var(--edge);color:var(--ink);border-radius:6px;padding:6px 7px;font-size:12px;font-family:inherit;line-height:1.35}
+  .cmt textarea:focus{outline:none;border-color:var(--brass)}
+  .cmt-prev{margin-top:6px;font-size:11px;color:var(--ink-dim);font-style:italic;line-height:1.4;border-left:2px solid var(--brass);padding-left:7px}
+  .agent-top .note-dot{color:var(--brass);font-size:11px;margin-left:2px}
+  .zedit{margin-top:8px}
+  .zedit .zadd{display:flex;gap:6px;margin-bottom:6px}
+  .zedit .zadd input{flex:1;min-width:0;background:#0e1620;border:1px solid var(--edge);color:var(--ink);border-radius:6px;padding:5px 7px;font-size:12px;font-family:ui-monospace,Menlo,monospace}
+  .zedit .zadd input:focus{outline:none;border-color:var(--brass)}
+  .zedit .zadd button{border:1px solid var(--edge);background:var(--brass-soft);color:var(--ink);border-radius:6px;padding:0 10px;font-size:12px;font-weight:600;cursor:pointer}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;max-height:92px;overflow-y:auto}
+  .chip{display:inline-flex;align-items:center;gap:5px;background:#0e1620;border:1px solid var(--edge);border-radius:20px;padding:2px 6px 2px 9px;font-size:11px;font-family:ui-monospace,Menlo,monospace;color:var(--ink)}
+  .chip .x{cursor:pointer;color:var(--ink-dim);font-size:13px;line-height:1}
+  .chip .x:hover{color:#ff6b6b}
+  .zedit .znote{font-size:10px;color:var(--ink-dim);margin:5px 0 0;line-height:1.4}
+
+  .tbtns{display:flex;gap:6px;margin-top:11px}
+  .tbtns button{flex:1;border:1px solid var(--edge);background:transparent;color:var(--ink-dim);border-radius:7px;padding:7px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .tbtns button:hover{color:var(--ink);border-color:var(--edge)}
+
+  #toast{position:absolute;left:50%;bottom:calc(var(--ftr) + 16px);transform:translateX(-50%);z-index:1300;
+    background:#0e1620ee;border:1px solid var(--brass);color:var(--ink);padding:9px 16px;border-radius:9px;
+    font-size:12.5px;box-shadow:0 10px 30px -10px #000c;opacity:0;transition:opacity .2s;pointer-events:none;max-width:84vw;text-align:center}
+  #toast.show{opacity:1}
+
+  .lbl{background:transparent;border:0;box-shadow:none;padding:0;font-weight:700;font-family:ui-monospace,Menlo,monospace;white-space:nowrap}
+  .lbl::before{border:0 !important}
+  .lbl-county{color:#f4e3b8;font-size:12px;letter-spacing:.5px;text-shadow:0 0 3px #000,0 1px 2px #000}
+  .lbl-zip{color:#ffd6e8;font-size:10.5px;text-shadow:0 0 3px #000,0 1px 2px #000}
+  .hint{font-size:11.5px;line-height:1.5;color:var(--ink-dim);margin:9px 0 0}
+  .hint b{color:var(--ink);font-weight:600}
+
+  .leaflet-bar a{background:var(--panel-2);color:var(--ink);border-color:var(--edge)}
+  .leaflet-bar a:hover{background:var(--panel)}
+  .leaflet-control-attribution{background:#0d1218cc !important;color:#7f8ea3 !important}
+  .leaflet-control-attribution a{color:#9fb0c4 !important}
+
+  #topbar,#botbar{position:fixed;left:0;right:0;z-index:1200;display:flex;
+    background:color-mix(in srgb, var(--panel) 96%, transparent);
+    backdrop-filter:blur(11px);-webkit-backdrop-filter:blur(11px)}
+  #topbar{top:0;height:var(--hdr);border-bottom:1px solid var(--edge);box-shadow:0 6px 20px -14px #000b;align-items:stretch}
+  #botbar{bottom:0;height:var(--ftr);border-top:1px solid var(--edge);align-items:center;padding:0 8px;gap:8px}
+
+  .hdr-drops{display:flex;flex:1}
+  .drop{position:relative;display:flex}
+  #topbar .drop{flex:1}
+  .drop-btn{width:100%;height:100%;background:transparent;border:0;color:var(--ink);font-size:12.5px;font-weight:600;
+    letter-spacing:.2px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;
+    border-right:1px solid var(--edge);transition:.13s;text-align:center;padding:0 6px}
+  #topbar .drop:last-child .drop-btn{border-right:0}
+  .drop-btn:hover{background:#ffffff08;color:var(--brass)}
+  .drop.open>.drop-btn{background:var(--brass-soft);color:var(--brass)}
+  .drop.active-line>.drop-btn{color:var(--brass);box-shadow:inset 0 -3px 0 var(--brass)}
+  .drop-btn .caret{font-size:9px;color:var(--ink-dim);transition:transform .18s}
+  .drop.open>.drop-btn .caret{transform:rotate(180deg);color:var(--brass)}
+
+  .drop-panel{position:absolute;top:100%;left:0;width:300px;max-width:calc(100vw - 20px);
+    max-height:calc(100vh - var(--hdr) - var(--ftr) - 20px);overflow-y:auto;
+    background:color-mix(in srgb, var(--panel) 97%, transparent);
+    backdrop-filter:blur(11px);-webkit-backdrop-filter:blur(11px);
+    border:1px solid var(--edge);border-top:0;border-radius:0 0 12px 12px;
+    box-shadow:0 18px 44px -14px #000d;padding:14px 16px;display:none;z-index:1250}
+  .drop.open>.drop-panel{display:block}
+  .drop.align-right>.drop-panel{left:auto;right:0}
+
+  #botbar .drop-btn{width:auto;height:28px;padding:0 14px;border:1px solid var(--edge);border-radius:8px;gap:8px;font-size:12px}
+  #botbar .drop.up>.drop-panel{top:auto;bottom:100%;border:1px solid var(--edge);border-bottom:0;border-radius:12px 12px 0 0;box-shadow:0 -18px 44px -14px #000d}
+  .foot-btn{height:28px;padding:0 14px;border:1px solid var(--edge);border-radius:8px;background:var(--brass-soft);
+    color:var(--ink);font-size:12px;font-weight:600;cursor:pointer}
+  .foot-btn:hover{border-color:var(--brass)}
+  .foot-readout{margin-left:auto;display:flex;gap:14px;padding-right:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ink-dim)}
+  .foot-readout b{color:var(--brass);font-weight:600}
+  .foot-readout .zbadge{color:var(--ink)}
+  .foot-readout .zbadge.low{color:#e0a35f}
+
+  /* cloud status pill */
+  #cloudStatus{height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 11px;border:1px solid var(--edge);
+    border-radius:8px;font-size:11.5px;font-weight:600;color:var(--ink-dim);cursor:default;white-space:nowrap}
+  #cloudStatus .cdot{width:7px;height:7px;border-radius:50%;background:#6b7889}
+  #cloudStatus.synced .cdot{background:var(--ok)} #cloudStatus.synced{color:#bfe8cd}
+  #cloudStatus.saving .cdot{background:var(--brass);animation:cpulse 1s infinite} #cloudStatus.saving{color:#f0dca0}
+  #cloudStatus.offline .cdot{background:#e0683b} #cloudStatus.offline{color:#f0b49a;border-color:#e0683b66}
+  @keyframes cpulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* sign-in overlay */
+  #authOverlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;
+    background:#0b0f14ee;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  #authOverlay.hidden{display:none}
+  .authcard{width:340px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--edge);
+    border-radius:14px;padding:26px 24px;box-shadow:0 24px 60px -16px #000c}
+  .authcard h2{margin:0 0 4px;font-size:17px;font-weight:650}
+  .authcard .sub{margin:0 0 18px;font-size:12px;color:var(--ink-dim)}
+  .authcard label{display:block;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-dim);
+    font-family:ui-monospace,Menlo,monospace;margin:12px 0 5px}
+  .authcard input{width:100%;background:#0e1620;border:1px solid var(--edge);color:var(--ink);border-radius:8px;
+    padding:10px 11px;font-size:13.5px}
+  .authcard input:focus{outline:none;border-color:var(--brass)}
+  .authcard button{width:100%;margin-top:18px;background:var(--brass-soft);border:1px solid var(--brass);color:var(--ink);
+    border-radius:8px;padding:11px;font-size:13.5px;font-weight:650;cursor:pointer}
+  .authcard button:hover{background:#c8a24b3a}
+  .authcard button:disabled{opacity:.5;cursor:default}
+  .autherr{margin-top:12px;font-size:12px;color:#f0a08a;min-height:14px;line-height:1.4}
+  .authbrand{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+  .authbrand .dot{width:9px;height:9px;border-radius:2px;background:var(--brass)}
+  .authbrand span{font-size:12px;letter-spacing:.3px;color:var(--ink-dim);font-family:ui-monospace,Menlo,monospace;text-transform:uppercase}
+  .signout{margin-top:12px;width:100%;border:1px solid var(--edge);background:transparent;color:var(--ink-dim);
+    border-radius:7px;padding:8px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .signout:hover{color:var(--ink);border-color:var(--edge)}
+
+  .slist::-webkit-scrollbar,.drop-panel::-webkit-scrollbar{width:8px}
+  .slist::-webkit-scrollbar-thumb,.drop-panel::-webkit-scrollbar-thumb{background:var(--edge);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+  .slist,.drop-panel{scrollbar-width:thin;scrollbar-color:var(--edge) transparent}
+
+  .leaflet-top.leaflet-right{top:8px}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<header id="topbar">
+  <div class="hdr-drops" id="hdrDrops"><!-- product-line tabs generated in JS --></div>
+</header>
+
+<footer id="botbar">
+  <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none">
+  <button id="importBtn" class="foot-btn">Import CSV</button>
+  <button id="exportAllBtn" class="foot-btn">Export All</button>
+
+  <div class="drop up" id="d-prefs">
+    <button class="drop-btn">Preferences <span class="caret">▴</span></button>
+    <div class="drop-panel">
+      <p class="label">Basemap</p>
+      <div class="seg" id="basemap">
+        <button data-base="aerial">Aerial</button>
+        <button data-base="street" class="on">Street</button>
+      </div>
+
+      <p class="label" style="margin-top:14px">Overlays</p>
+
+      <div class="row">
+        <label for="ov-counties"><span class="swatch sw-county"></span>County boundaries</label>
+        <span class="switch"><input type="checkbox" id="ov-counties"><span class="track"></span><span class="knob"></span></span>
+      </div>
+
+      <div class="row">
+        <label for="ov-zips"><span class="swatch sw-zip"></span>ZIP codes (ZCTA)</label>
+        <span class="switch"><input type="checkbox" id="ov-zips"><span class="track"></span><span class="knob"></span></span>
+      </div>
+      <p id="zipNote" class="hint" style="display:none;margin:2px 0 0;color:#e0a35f">Zoom in to load ZIP areas.</p>
+
+      <div class="row">
+        <label for="ov-terr"><span class="swatch sw-terr"></span>Agent territories</label>
+        <span class="switch"><input type="checkbox" id="ov-terr" checked><span class="track"></span><span class="knob"></span></span>
+      </div>
+
+      <div class="row">
+        <label for="ov-labels">Street labels over aerial</label>
+        <span class="switch"><input type="checkbox" id="ov-labels"><span class="track"></span><span class="knob"></span></span>
+      </div>
+
+      <div style="margin-top:12px">
+        <div class="slabel"><p class="label" style="margin-bottom:6px">Territory opacity</p><span id="zipOpVal">35%</span></div>
+        <input type="range" id="zipOpacity" class="slider zip" min="0" max="100" value="35">
+      </div>
+
+      <button id="signOutBtn" class="signout">Sign out</button>
+    </div>
+  </div>
+
+  <span id="cloudStatus" title="Cloud sync status"><span class="cdot"></span><span id="cloudStatusText">Connecting…</span></span>
+
+  <div class="foot-readout">
+    <span>lat <b id="rLat">—</b></span>
+    <span>lng <b id="rLng">—</b></span>
+    <span class="zbadge" id="rZoom">z —</span>
+  </div>
+</footer>
+
+<div id="authOverlay">
+  <form class="authcard" id="authForm" autocomplete="on">
+    <div class="authbrand"><span class="dot"></span><span>Deployment Viewer</span></div>
+    <h2>Sign in</h2>
+    <p class="sub">Your deployments are saved securely in the cloud.</p>
+    <label for="authEmail">Email</label>
+    <input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com">
+    <label for="authPass">Password</label>
+    <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button type="submit" id="authBtn">Sign in</button>
+    <div class="autherr" id="authErr"></div>
+  </form>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ========================= Base layers + map ========================= */
+const aerial = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom:20, attribution:"Imagery © Esri" });
+const street = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom:19, attribution:"Street map © Esri" });
+const labels = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom:20, pane:"labelPane" });
+
+const map = L.map("map", { center:[29.76, -95.37], zoom:11, zoomControl:false, minZoom:5 });
+L.control.zoom({ position:"topright" }).addTo(map);
+map.createPane("labelPane");    map.getPane("labelPane").style.zIndex    = 450;
+map.createPane("boundaryPane"); map.getPane("boundaryPane").style.zIndex = 460;
+map.createPane("countyLabels"); map.getPane("countyLabels").style.zIndex = 640;
+map.createPane("zipLabels");    map.getPane("zipLabels").style.zIndex    = 630;
+setTimeout(()=>map.invalidateSize(), 60);
+street.addTo(map);   // default basemap = Street (labels overlay off by default)
+
+/* ========================= State (per product line) ========================= */
+const LINES = [
+  { id:"industrial",     label:"Industrial" },
+  { id:"multifamily",    label:"Multifamily" },
+  { id:"retail_sales",   label:"Retail Sales" },
+  { id:"retail_leasing", label:"Retail Leasing" }
+];
+// Ordered so consecutive entries are far apart in hue — adjacent agents get visibly different colors.
+// First 10 are maximally distinct families; the near-cousins (rose, burnt-orange, teal, etc.) come after.
+const PALETTE = ["#e6194B","#4363d8","#3cb44b","#f58231","#911eb4","#42d4f4","#f032e6","#9A6324",
+                 "#808000","#000075","#1b9e77","#e75480","#d95f02","#7570b3","#469990","#b15928"];
+const ZIP_COLOR = "#ff2e88";
+
+// lineId -> { agents:[{id,name,color,stock,velocity,zips:[]}], activeAgentId }
+const state = {};
+LINES.forEach(L => state[L.id] = { agents:[], activeAgentId:null });
+let activeLine = LINES[0].id;
+let assignMode = false;
+let zipFillOpacity = 0.23;
+let currentIndex = {};   // zip -> [agentId,...] for the ACTIVE line
+
+/* ========================= Helpers ========================= */
+const zipId   = f => (f && f.properties) ? (f.properties.BASENAME || f.properties.ZCTA5 || "") : "";
+const colorOf = id => { const a = state[activeLine].agents.find(x=>x.id===id); return a ? a.color : ZIP_COLOR; };
+const gridOn  = () => document.getElementById("ov-zips").checked;
+const terrOn  = () => document.getElementById("ov-terr").checked;
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmtStock(v){ const d=String(v).replace(/[^\d]/g,""); return d ? Number(d).toLocaleString("en-US") : ""; }
+function fmtVelocity(v){ const m=String(v).replace(/[^\d.]/g,""); if(m==="") return ""; const f=parseFloat(m); return isNaN(f) ? "" : f.toFixed(2)+"%"; }
+function parseVelocityImport(v){
+  const s=String(v==null?"":v).trim(); if(!s) return "";
+  const hasPct = s.includes("%");
+  const num = parseFloat(s.replace(/[^\d.\-]/g,"")); if(isNaN(num)) return "";
+  const pct = hasPct ? num : (num <= 1 ? num*100 : num);   // 0.053 -> 5.30% ; 4.82 -> 4.82%
+  return pct.toFixed(2)+"%";
+}
+function parseZips(cell){ return [...new Set(String(cell||"").split(/[,\s;]+/).map(z=>z.trim()).filter(z=>/^\d{5}$/.test(z)))]; }
+let toastTimer;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),3600); }
+function csvCell(v){ v=String(v==null?"":v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+function download(name,text,type){ const b=new Blob([text],{type:type||"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+function buildIndex(line){ const m={}; state[line].agents.forEach(a=>(a.zips||[]).forEach(z=>{ (m[z]=m[z]||[]).push(a.id); })); return m; }
+
+/* ========================= County + ZIP boundaries (Census TIGERweb) ========================= */
+const COUNTY_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1";
+const ZIP_URL    = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4";
+
+const counties = L.esri.featureLayer({
+  url: COUNTY_URL, pane:"boundaryPane", interactive:false,
+  style: () => ({ color:"#c8a24b", weight:2, fill:false, opacity:0.95 }),
+  onEachFeature: (f, layer) => {
+    const n = f.properties.BASENAME || f.properties.NAME || "";
+    if(n) layer.bindTooltip(n + " County", {permanent:true, direction:"center", className:"lbl lbl-county", pane:"countyLabels"});
+  }
+});
+
+// cross-hatch SVG pattern for overlapping ZIPs (injected once the boundary SVG exists)
+function ensureHatchPattern(){
+  const svg = map.getPane("boundaryPane") && map.getPane("boundaryPane").querySelector("svg");
+  if(!svg || svg.querySelector("#overlapHatch")) return;
+  const NS="http://www.w3.org/2000/svg";
+  const defs=document.createElementNS(NS,"defs");
+  const pat=document.createElementNS(NS,"pattern");
+  pat.setAttribute("id","overlapHatch"); pat.setAttribute("width","8"); pat.setAttribute("height","8");
+  pat.setAttribute("patternUnits","userSpaceOnUse"); pat.setAttribute("patternTransform","rotate(45)");
+  const r=document.createElementNS(NS,"rect"); r.setAttribute("width","8"); r.setAttribute("height","8"); r.setAttribute("fill","#ffdd33"); r.setAttribute("fill-opacity","0.18");
+  const l1=document.createElementNS(NS,"line"); l1.setAttribute("x1","0"); l1.setAttribute("y1","0"); l1.setAttribute("x2","0"); l1.setAttribute("y2","8"); l1.setAttribute("stroke","#ffdd33"); l1.setAttribute("stroke-width","3");
+  pat.appendChild(r); pat.appendChild(l1); defs.appendChild(pat); svg.appendChild(defs);
+}
+
+// Style for the ACTIVE line only. 0 agents = grid/invisible; 1 = agent color; 2+ = overlap.
+function overlapKind(zip){ const a=currentIndex[zip]; return !a?0:(a.length>=2?2:1); }
+function zipStyle(feature){
+  const z = zipId(feature);
+  const k = overlapKind(z);
+  if(terrOn() && k===2){ return { stroke:true, color:"#ffdd33", weight:2.6, opacity:1, fill:true, fillColor:"#ffdd33", fillOpacity:Math.min(0.5, zipFillOpacity+0.12), dashArray:null }; }
+  if(terrOn() && k===1){ const c=colorOf(currentIndex[z][0]); return { stroke:true, color:c, weight:2.3, opacity:1, fill:true, fillColor:c, fillOpacity:zipFillOpacity, dashArray:null }; }
+  if(gridOn()){ return { stroke:true, color:ZIP_COLOR, weight:2, opacity:0.95, fill:false, fillOpacity:0, dashArray:null }; }
+  return { stroke:false, weight:0, opacity:0, fill:false, fillOpacity:0 };
+}
+const zips = L.esri.featureLayer({
+  url: ZIP_URL, pane:"boundaryPane", interactive:false, style: zipStyle,
+  onEachFeature: (f, layer) => { const z=zipId(f); if(z) layer.bindTooltip(z, {permanent:true, direction:"center", className:"lbl lbl-zip", pane:"zipLabels"}); }
+});
+zips.on("load", restyleZips);
+function restyleZips(){
+  currentIndex = buildIndex(activeLine);
+  ensureHatchPattern();
+  zips.eachFeature(l=>{
+    try{
+      l.setStyle(zipStyle(l.feature));
+      if(l._path && terrOn() && overlapKind(zipId(l.feature))===2){
+        l._path.setAttribute("fill","url(#overlapHatch)");
+        l._path.setAttribute("fill-opacity","1");
+      }
+    }catch(_){}
+  });
+}
+
+/* point-in-polygon so a map click resolves to the ZIP under it.
+   Even-odd across ALL rings of a polygon so holes count as OUTSIDE:
+   a point inside a donut's hole crosses outer+hole edges (even) => outside. */
+function pointInPolygonRings(pt, rings){
+  let inside=false;
+  for(const ring of rings){
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+      const xi=ring[i].lng, yi=ring[i].lat, xj=ring[j].lng, yj=ring[j].lat;
+      if(((yi>pt.lat)!==(yj>pt.lat)) && (pt.lng < (xj-xi)*(pt.lat-yi)/((yj-yi)||1e-12)+xi)) inside=!inside;
+    }
+  }
+  return inside;
+}
+function layerContains(layer, latlng){
+  if(!layer.getBounds || !layer.getBounds().contains(latlng)) return false;
+  const ll = layer.getLatLngs();
+  if(!ll || !ll.length) return false;
+  if(ll[0] instanceof L.LatLng)      return pointInPolygonRings(latlng, [ll]);  // single ring
+  if(ll[0][0] instanceof L.LatLng)   return pointInPolygonRings(latlng, ll);    // polygon: outer + holes
+  for(const poly of ll){ if(pointInPolygonRings(latlng, poly)) return true; }   // multipolygon
+  return false;
+}
+// When several ZIPs match a click (enclaves, slivers, overlaps), pick the SMALLEST
+// so a tiny ZIP like 77661 wins over the big one surrounding it (e.g. 77665).
+function bboxArea(layer){ const b=layer.getBounds(); return (b.getNorth()-b.getSouth())*(b.getEast()-b.getWest()); }
+function zipAtLatLng(latlng){
+  let best=null, bestArea=Infinity;
+  zips.eachFeature(l=>{ if(layerContains(l,latlng)){ const a=bboxArea(l); if(a<bestArea){ bestArea=a; best=zipId(l.feature); } } });
+  return best;
+}
+
+function updateBoundaryZoom(){
+  const z = map.getZoom();
+  map.getPane("countyLabels").style.display = z >= 7 ? "" : "none";
+  map.getPane("zipLabels").style.display    = (gridOn() && z >= 12) ? "" : "none";
+  const need = gridOn() || terrOn() || assignMode;
+  if(need && z >= 9){ if(!map.hasLayer(zips)) zips.addTo(map); }
+  else if(map.hasLayer(zips)) map.removeLayer(zips);
+  document.getElementById("zipNote").style.display = (need && z < 9) ? "" : "none";
+  restyleZips();
+}
+map.on("zoomend", updateBoundaryZoom);
+
+map.on("click", e=>{
+  if(!assignMode) return;
+  const z = zipAtLatLng(e.latlng);
+  if(z) onZipPicked(z);
+  else toast("Zoom in so ZIPs are loaded, then click to assign");
+});
+
+/* ========================= Product-line tabs ========================= */
+function buildTabs(){
+  const host = document.getElementById("hdrDrops");
+  host.innerHTML = "";
+  LINES.forEach((L, i) => {
+    const d = document.createElement("div");
+    d.className = "drop" + (i >= LINES.length-2 ? " align-right" : "");
+    d.id = "tab-" + L.id;
+    d.innerHTML =
+      `<button class="drop-btn">${esc(L.label)} <span class="caret">▾</span></button>`+
+      `<div class="drop-panel">`+
+        `<button class="tmode-btn" id="tmode-${L.id}"><span class="pip"></span>Assign mode: off</button>`+
+        `<div class="addrow"><input id="agName-${L.id}" type="text" placeholder="Add agent…" maxlength="28"><button id="agAdd-${L.id}">Add</button></div>`+
+        `<div id="slist-${L.id}" class="slist"></div>`+
+        `<p id="sEmpty-${L.id}" class="sempty">Add an agent (or Import CSV), turn on Assign mode, then click ZIPs.</p>`+
+        `<div class="tbtns"><button id="exp-${L.id}">Export CSV</button><button id="clr-${L.id}">Clear all</button></div>`+
+      `</div>`;
+    host.appendChild(d);
+
+    d.querySelector(".drop-btn").addEventListener("click", ()=>{
+      if(L.id !== activeLine){
+        setActiveLine(L.id);
+        LINES.forEach(x=>{ document.getElementById("tab-"+x.id).classList.toggle("open", x.id===L.id); });
+      } else {
+        d.classList.toggle("open");
+      }
+    });
+    document.getElementById("tmode-"+L.id).addEventListener("click", ()=>setAssignMode(!assignMode));
+    document.getElementById("agAdd-"+L.id).addEventListener("click", ()=>addAgent(L.id));
+    document.getElementById("agName-"+L.id).addEventListener("keydown", e=>{ if(e.key==="Enter") addAgent(L.id); });
+    document.getElementById("exp-"+L.id).addEventListener("click", ()=>exportLine(L.id));
+    document.getElementById("clr-"+L.id).addEventListener("click", ()=>clearLine(L.id));
+  });
+}
+function updateTabHighlight(){ LINES.forEach(L=>{ const d=document.getElementById("tab-"+L.id); if(d) d.classList.toggle("active-line", L.id===activeLine); }); }
+
+function setActiveLine(line){
+  if(line===activeLine) return;
+  if(assignMode) setAssignMode(false);
+  activeLine = line;
+  updateTabHighlight();
+  restyleZips();
+  renderAgents(line);
+  persist();
+}
+
+/* ========================= Agents ========================= */
+function renderAgents(lineId){
+  const st = state[lineId];
+  const list = document.getElementById("slist-"+lineId);
+  const empty = document.getElementById("sEmpty-"+lineId);
+  if(!list) return;
+  const idx = buildIndex(lineId);
+  list.innerHTML = "";
+  empty.style.display = st.agents.length ? "none" : "";
+  st.agents.forEach(a=>{
+    const zs = a.zips || [];
+    const overlapN = zs.filter(z => (idx[z]||[]).length >= 2).length;
+    const row = document.createElement("div");
+    row.className = "agent" + (a.id===st.activeAgentId ? " active" : "");
+    row.innerHTML =
+      `<div class="agent-top">`+
+        `<label class="dotc" style="background:${a.color}" title="Click to change color"><input type="color" class="cpick" value="${a.color}"></label>`+
+        `<span class="nm">${esc(a.name)}</span>`+
+        `<button class="edit" title="Rename agent">✎</button>`+
+        `<span class="ct">${zs.length} zip${zs.length===1?"":"s"}${overlapN?` <span class="ovl">· ${overlapN} overlap</span>`:""}${a.comment?` <span class="note-dot" title="Has comment">❝</span>`:""}</span>`+
+        `<button class="rm" title="Remove">×</button>`+
+      `</div>`+
+      `<div class="agent-metrics">`+
+        `<label>Stock<input class="m-stock" inputmode="numeric" placeholder="0" value="${esc(a.stock||"")}"></label>`+
+        `<label>Velocity<input class="m-vel" inputmode="decimal" placeholder="0.00%" value="${esc(a.velocity||"")}"></label>`+
+      `</div>`;
+    row.querySelector(".agent-top").addEventListener("click", ev=>{
+      if(ev.target.closest(".dotc")) return;                 // color chip handles itself
+      if(ev.target.classList.contains("rm")){ removeAgent(lineId, a.id); return; }
+      if(ev.target.classList.contains("edit")){ renameAgent(lineId, a.id); return; }
+      // Toggle: click an expanded agent again to collapse it back down.
+      st.activeAgentId = (st.activeAgentId===a.id) ? null : a.id; persist(); renderAgents(lineId);
+    });
+    const cp = row.querySelector(".cpick");
+    if(cp){
+      cp.addEventListener("click", e=>e.stopPropagation());
+      cp.addEventListener("input", ()=>{ a.color = cp.value; a.colorLocked = true; persist(); renderAgents(lineId); if(lineId===activeLine) restyleZips(); });
+    }
+    const stk = row.querySelector(".m-stock"), vel = row.querySelector(".m-vel");
+    [stk,vel].forEach(inp=>{ inp.addEventListener("click",e=>e.stopPropagation()); inp.addEventListener("mousedown",e=>e.stopPropagation()); });
+    stk.addEventListener("input", ()=>{ a.stock = stk.value; });
+    stk.addEventListener("blur",  ()=>{ a.stock = fmtStock(stk.value); stk.value = a.stock; persist(); });
+    vel.addEventListener("input", ()=>{ a.velocity = vel.value; });
+    vel.addEventListener("blur",  ()=>{ a.velocity = fmtVelocity(vel.value); vel.value = a.velocity; persist(); });
+
+    // Comment: editable on the active agent; shown as a muted preview on the others.
+    if(a.id===st.activeAgentId){
+      const cm=document.createElement("div"); cm.className="cmt";
+      cm.innerHTML=`<label>Comment</label><textarea class="m-cmt" rows="2" placeholder="Notes for this agent / territory…"></textarea>`;
+      const ta=cm.querySelector(".m-cmt"); ta.value=a.comment||"";
+      ta.addEventListener("click",e=>e.stopPropagation()); ta.addEventListener("mousedown",e=>e.stopPropagation());
+      ta.addEventListener("input", ()=>{ a.comment = ta.value; });
+      ta.addEventListener("blur",  ()=>{ a.comment = (ta.value||"").trim(); persist(); });
+      row.appendChild(cm);
+    } else if(a.comment){
+      const pv=document.createElement("div"); pv.className="cmt-prev"; pv.textContent=a.comment; row.appendChild(pv);
+    }
+
+    // Active agent gets a ZIP editor: add by code (handles PO-box ZIPs with no map shape) + remove chips.
+    if(a.id===st.activeAgentId){
+      const ed=document.createElement("div"); ed.className="zedit";
+      ed.innerHTML=`<div class="zadd"><input class="zin" inputmode="numeric" maxlength="5" placeholder="add ZIP by code…"><button class="zbtn">Add</button></div><div class="chips"></div><p class="znote">Type any ZIP here — including PO-box ZIPs that have no Census boundary. They stay assigned and export, but won't draw on the map.</p>`;
+      const chips=ed.querySelector(".chips");
+      (a.zips||[]).slice().sort().forEach(z=>{
+        const c=document.createElement("span"); c.className="chip"; c.innerHTML=`${esc(z)} <span class="x" title="Remove">×</span>`;
+        c.querySelector(".x").addEventListener("click",ev=>{ ev.stopPropagation(); const i=a.zips.indexOf(z); if(i>=0)a.zips.splice(i,1); persist(); restyleZips(); renderAgents(lineId); });
+        chips.appendChild(c);
+      });
+      const zin=ed.querySelector(".zin"), zbtn=ed.querySelector(".zbtn");
+      zin.addEventListener("click",e=>e.stopPropagation()); zin.addEventListener("mousedown",e=>e.stopPropagation());
+      const addZip=()=>{ const z=(zin.value||"").replace(/\D/g,"").slice(0,5); if(z.length!==5){ toast("Enter a 5-digit ZIP"); return; } if(!a.zips.includes(z)) a.zips.push(z); persist(); restyleZips(); renderAgents(lineId); setTimeout(()=>{ const ni=document.querySelector("#slist-"+lineId+" .agent.active .zin"); if(ni) ni.focus(); },0); };
+      zbtn.addEventListener("click",e=>{ e.stopPropagation(); addZip(); });
+      zin.addEventListener("keydown",e=>{ e.stopPropagation(); if(e.key==="Enter") addZip(); });
+      row.appendChild(ed);
+    }
+
+    list.appendChild(row);
+  });
+  list.classList.toggle("scrollable", list.scrollHeight > list.clientHeight + 1);
+}
+
+function newAgentId(){ return "a" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function hslToHex(h,s,l){ s/=100; l/=100; const k=n=>(n+h/30)%12, a=s*Math.min(l,1-l),
+  f=n=>{ const c=l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1))); return Math.round(255*c).toString(16).padStart(2,"0"); };
+  return "#"+f(0)+f(8)+f(4); }
+// A distinct color for position i (always hex): palette first, then golden-angle hues so it NEVER repeats.
+function colorForIndex(i){ if(i<PALETTE.length) return PALETTE[i]; return hslToHex(Math.round((i*137.508)%360), 68, 52); }
+// First color not already used in this line (guarantees uniqueness; no wraparound duplicates).
+function nextColor(st){ const used=new Set(st.agents.map(a=>a.color)); let k=0,c; do{ c=colorForIndex(k++); }while(used.has(c)); return c; }
+// Fix a line so every agent has a DISTINCT color. Manually-picked colors (colorLocked) are kept as-is;
+// only auto colors get reassigned, and they avoid the locked ones too.
+function ensureDistinctColors(lineId){
+  const agents = state[lineId].agents, used=new Set();
+  agents.forEach(a=>{ if(a.colorLocked && a.color) used.add(a.color); });            // reserve manual picks
+  agents.forEach(a=>{ if(a.colorLocked) return; if(a.color && !used.has(a.color)) used.add(a.color); else a.color=null; });
+  let k=0;
+  agents.forEach(a=>{ if(a.colorLocked) return; if(!a.color){ let c; do{ c=colorForIndex(k++); }while(used.has(c)); a.color=c; used.add(c); } });
+}
+
+function addAgent(lineId){
+  const inp = document.getElementById("agName-"+lineId);
+  const name = (inp.value||"").trim();
+  if(!name){ inp.focus(); return; }
+  if(/^\d+$/.test(name)){ toast("That looks like a ZIP, not a name — add ZIPs with the agent's ZIP editor, not the Add-agent box."); inp.focus(); return; }
+  const st = state[lineId];
+  if(st.agents.some(a=>a.name.toLowerCase()===name.toLowerCase())){ toast("An agent named “"+name+"” already exists in this line."); inp.focus(); return; }
+  st.agents.push({ id:newAgentId(), name, color:nextColor(st), stock:"", velocity:"", zips:[], comment:"" });
+  st.activeAgentId = st.agents[st.agents.length-1].id;
+  inp.value = "";
+  persist(); renderAgents(lineId);
+  if(lineId===activeLine && !assignMode) toast("Turn on Assign mode, then click ZIPs");
+}
+
+function removeAgent(lineId, id){
+  const st = state[lineId];
+  const a = st.agents.find(x=>x.id===id);
+  if(a && !confirm("Remove agent “"+a.name+"” and their ZIP assignments?")) return;
+  st.agents = st.agents.filter(x=>x.id!==id);
+  if(st.activeAgentId===id) st.activeAgentId = st.agents.length ? st.agents[0].id : null;
+  persist(); renderAgents(lineId);
+  if(lineId===activeLine) restyleZips();
+}
+
+function renameAgent(lineId, id){
+  const st = state[lineId];
+  const a = st.agents.find(x=>x.id===id); if(!a) return;
+  const nm = (prompt("Rename agent:", a.name) || "").trim();
+  if(!nm || nm===a.name) return;
+  if(/^\d+$/.test(nm)){ toast("That looks like a ZIP, not a name."); return; }
+  if(st.agents.some(x=>x.id!==id && x.name.toLowerCase()===nm.toLowerCase())){
+    toast("Another agent in this product line already has that name"); return;
+  }
+  a.name = nm; persist(); renderAgents(lineId);
+}
+
+function onZipPicked(zip){
+  const st = state[activeLine];
+  const a = st.agents.find(x=>x.id===st.activeAgentId);
+  if(!a){ toast("Add or select an agent first"); return; }
+  const i = a.zips.indexOf(zip);
+  if(i>=0) a.zips.splice(i,1); else a.zips.push(zip);   // click again to remove
+  persist(); restyleZips(); renderAgents(activeLine);
+}
+
+function setAssignMode(on){
+  assignMode = on;
+  document.body.classList.toggle("tmode", on);
+  LINES.forEach(L=>{
+    const b = document.getElementById("tmode-"+L.id);
+    if(b){ const act = on && L.id===activeLine; b.classList.toggle("on", act); b.innerHTML = `<span class="pip"></span>Assign mode: ${act?"on":"off"}`; }
+  });
+  if(on){
+    document.getElementById("ov-zips").checked = true;
+    document.getElementById("ov-terr").checked = true;
+    updateBoundaryZoom();
+    const st = state[activeLine];
+    if(!st.agents.length) toast("Add an agent to assign ZIPs to");
+    else if(map.getZoom()<9) toast("Zoom in to load ZIPs, then click to assign");
+    else toast("Click ZIPs to assign to " + ((st.agents.find(a=>a.id===st.activeAgentId)||{}).name || "the agent"));
+  }
+}
+
+/* ========================= CSV import ========================= */
+function parseCSV(text){
+  const rows=[]; let row=[], field="", i=0, inQ=false;
+  text=String(text).replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+  while(i<text.length){
+    const c=text[i];
+    if(inQ){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue; } inQ=false; i++; continue; }
+      field+=c; i++; continue;
+    } else {
+      if(c==='"'){ inQ=true; i++; continue; }
+      if(c===","){ row.push(field); field=""; i++; continue; }
+      if(c==="\n"){ row.push(field); rows.push(row); row=[]; field=""; i++; continue; }
+      field+=c; i++; continue;
+    }
+  }
+  if(field!=="" || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=> r.some(x=>String(x).trim()!==""));
+}
+function rowsToObjects(rows){
+  if(!rows.length) return [];
+  const header = rows[0].map(h=>String(h).trim().toLowerCase());
+  const pick = (r, names) => { for(const n of names){ const k=header.indexOf(n); if(k>=0) return r[k]; } return ""; };
+  return rows.slice(1).map(r=>({
+    agent:        pick(r, ["agent","name","agent name"]),
+    product_type: pick(r, ["product_type","product type","producttype","product_line","product line","product","type","line"]),
+    zips:         pick(r, ["zips","zip","zip codes","zipcodes","zip_codes"]),
+    stock:        pick(r, ["stock","total stock","territory stock"]),
+    velocity:     pick(r, ["velocity","total velocity","territory velocity"]),
+    comment:      pick(r, ["comment","comments","note","notes"])
+  }));
+}
+const normKey = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,"");
+function matchLine(pt){
+  const n = normKey(pt); if(!n) return null;
+  return LINES.find(L=>normKey(L.label)===n) ||
+         LINES.find(L=>normKey(L.label).includes(n) || n.includes(normKey(L.label))) || null;
+}
+function importRows(objs){
+  let added=0, updated=0; const skipped=[]; const touched=new Set();
+
+  // If any agents in the file already exist, ask whether to ADD their ZIPs or REPLACE.
+  const collide=[];
+  objs.forEach(o=>{
+    const name=String(o.agent||"").trim(); if(!name) return;
+    const line=matchLine(o.product_type); if(!line) return;
+    if(state[line.id].agents.some(a=>a.name.toLowerCase()===name.toLowerCase())) collide.push(name);
+  });
+  let addMode=false;
+  if(collide.length){
+    addMode = confirm(collide.length+" agent(s) in this file already exist (e.g. "+[...new Set(collide)].slice(0,3).join(", ")+").\n\n"+
+      "OK  = ADD the file's ZIPs to their current territory (keeps existing ZIPs — e.g. their Texas ZIPs stay).\n"+
+      "Cancel = REPLACE their ZIPs, stock & velocity with the file.");
+  }
+
+  objs.forEach(o=>{
+    const name=String(o.agent||"").trim(); if(!name) return;
+    if(/^\d+$/.test(name)){ skipped.push(name+" (looks like a ZIP, not an agent name)"); return; }
+    const line=matchLine(o.product_type);
+    if(!line){ skipped.push(name+" ("+(String(o.product_type||"").trim()||"blank")+")"); return; }
+    const st=state[line.id]; touched.add(line.id);
+    const zips=parseZips(o.zips), stock=fmtStock(o.stock), velocity=parseVelocityImport(o.velocity), comment=String(o.comment||"").trim();
+    const ex=st.agents.find(a=>a.name.toLowerCase()===name.toLowerCase());
+    if(ex){
+      if(addMode){
+        ex.zips = [...new Set([...(ex.zips||[]), ...zips])];   // union, keep existing ZIPs
+        if(!ex.stock && stock) ex.stock=stock;                 // fill blanks only; don't clobber existing metrics
+        if(!ex.velocity && velocity) ex.velocity=velocity;
+        if(!ex.comment && comment) ex.comment=comment;
+      } else {
+        ex.zips=zips; ex.stock=stock; ex.velocity=velocity; ex.comment=comment;
+      }
+      updated++;
+    }
+    else { st.agents.push({ id:newAgentId(), name, color:nextColor(st), stock, velocity, zips, comment }); added++; }
+    st.activeAgentId = st.agents[st.agents.length-1].id;
+  });
+
+  if(!added && !updated){ toast(skipped.length ? "No rows matched a product line. Check the product_type column." : "No agent rows found in that CSV."); if(skipped.length) console.warn("Skipped:", skipped); return; }
+
+  LINES.forEach(L=>ensureDistinctColors(L.id));   // keep every agent's color distinct after import
+
+  // count overlaps across all lines (per product line)
+  let overlaps=0;
+  LINES.forEach(L=>{ const idx=buildIndex(L.id); Object.values(idx).forEach(arr=>{ if(arr.length>=2) overlaps++; }); });
+
+  const first = LINES.find(L=>touched.has(L.id));
+  if(first){ activeLine=first.id; LINES.forEach(x=>{ document.getElementById("tab-"+x.id).classList.toggle("open", x.id===first.id); }); }
+  document.getElementById("ov-terr").checked = true;
+  updateTabHighlight();
+  LINES.forEach(L=>renderAgents(L.id));
+  updateBoundaryZoom();
+  persist();
+
+  let msg = `Imported: ${added} added` + (updated?`, ${updated} ${addMode?"extended (ZIPs added)":"updated"}`:"") + (skipped.length?`, ${skipped.length} skipped`:"") + ".";
+  if(overlaps) msg += ` ${overlaps} ZIP overlap${overlaps===1?"":"s"} flagged (cross-hatched).`;
+  toast(msg);
+  if(skipped.length) console.warn("Skipped rows (unknown product_type):", skipped);
+}
+document.getElementById("importBtn").addEventListener("click", ()=>document.getElementById("fileInput").click());
+document.getElementById("exportAllBtn").addEventListener("click", exportAll);
+document.getElementById("fileInput").addEventListener("change", e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=()=>{ try{ importRows(rowsToObjects(parseCSV(String(reader.result)))); }catch(err){ toast("Could not read that CSV file."); console.error(err); } };
+  reader.onerror=()=>toast("Could not read that file.");
+  reader.readAsText(f);
+  e.target.value="";   // allow re-importing the same filename
+});
+
+/* ========================= Export / clear (per line) ========================= */
+function exportLine(lineId){
+  const st = state[lineId];
+  if(!st.agents.length){ toast("No agents to export"); return; }
+  const lineLabel = LINES.find(L=>L.id===lineId).label;
+  const rows = [["agent","product_type","zips","stock","velocity","comment"]];
+  st.agents.forEach(a=> rows.push([a.name, lineLabel, (a.zips||[]).join(", "), a.stock||"", a.velocity||"", a.comment||""]));
+  download(lineLabel.replace(/\W+/g,"-").toLowerCase()+"-deployments.csv", rows.map(r=>r.map(csvCell).join(",")).join("\n"), "text/csv");
+}
+function exportAll(){
+  let total=0;
+  const rows=[["agent","product_type","zips","stock","velocity","comment"]];
+  LINES.forEach(L=>{ state[L.id].agents.forEach(a=>{ total++; rows.push([a.name, L.label, (a.zips||[]).join(", "), a.stock||"", a.velocity||"", a.comment||""]); }); });
+  if(!total){ toast("No agents in any product line to export"); return; }
+  download("all-deployments.csv", rows.map(r=>r.map(csvCell).join(",")).join("\n"), "text/csv");
+  toast("Exported "+total+" agent"+(total===1?"":"s")+" across all product lines.");
+}
+function clearLine(lineId){
+  const st = state[lineId];
+  if(!st.agents.length) return;
+  if(confirm("Clear all agents and ZIP assignments in " + LINES.find(L=>L.id===lineId).label + "?")){
+    st.agents = []; st.activeAgentId = null;
+    persist(); renderAgents(lineId);
+    if(lineId===activeLine) restyleZips();
+  }
+}
+
+/* ========================= Preferences wiring ========================= */
+document.querySelectorAll("#basemap button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll("#basemap button").forEach(b=>b.classList.remove("on"));
+    btn.classList.add("on");
+    if(btn.dataset.base==="aerial"){ map.removeLayer(street); aerial.addTo(map); }
+    else { map.removeLayer(aerial); street.addTo(map); }
+    aerial.bringToBack(); street.bringToBack();
+  });
+});
+document.getElementById("ov-counties").addEventListener("change", e=>{ e.target.checked ? counties.addTo(map) : map.removeLayer(counties); });
+document.getElementById("ov-zips").addEventListener("change", updateBoundaryZoom);
+document.getElementById("ov-terr").addEventListener("change", updateBoundaryZoom);
+document.getElementById("ov-labels").addEventListener("change", e=>{ e.target.checked ? labels.addTo(map) : map.removeLayer(labels); });
+document.getElementById("zipOpacity").addEventListener("input", e=>{
+  zipFillOpacity = (e.target.value/100) * 0.65;
+  document.getElementById("zipOpVal").textContent = e.target.value + "%";
+  restyleZips();
+});
+document.querySelectorAll("#botbar .drop-btn").forEach(b=>{ b.addEventListener("click", ()=> b.closest(".drop").classList.toggle("open")); });
+
+/* ========================= Persistence (migrates old v10 shape) ========================= */
+function persistLocal(){ try{ localStorage.setItem("tpv_lines_v10", JSON.stringify({state, activeLine})); }catch(_){} }
+function persist(){ persistLocal(); scheduleCloudSync(); }
+function loadPersisted(){
+  try{
+    const d = JSON.parse(localStorage.getItem("tpv_lines_v10"));
+    if(d && d.state){
+      LINES.forEach(L=>{
+        const s=d.state[L.id]; if(!s) return;
+        const agents=(s.agents||[]).map(a=>({ id:a.id||newAgentId(), name:a.name||"", color:a.color||ZIP_COLOR, colorLocked:!!a.colorLocked,
+          stock:a.stock||"", velocity:a.velocity||"", zips:Array.isArray(a.zips)?a.zips:[], comment:a.comment||"" }));
+        // migrate old {assignments: {zip:agentId}} into per-agent zip lists
+        if(s.assignments){ Object.entries(s.assignments).forEach(([z,aid])=>{ const ag=agents.find(x=>x.id===aid); if(ag && !ag.zips.includes(z)) ag.zips.push(z); }); }
+        state[L.id] = { agents, activeAgentId:s.activeAgentId||(agents[0]?agents[0].id:null) };
+      });
+      if(d.activeLine && state[d.activeLine]) activeLine = d.activeLine;
+    }
+  }catch(_){}
+}
+
+/* ========================= Supabase cloud sync ========================= */
+const SUPA_URL = "https://ucnwrnztagfaadkicadt.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjbndybnp0YWdmYWFka2ljYWR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMjQxMjIsImV4cCI6MjEwNzkwMDEyMn0.PxPsOmDemqGj7_Zcipz0DNHR4n6jmCjmpwj-NI82C3o";
+const sb = (window.supabase && SUPA_URL) ? window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth:{ persistSession:true, autoRefreshToken:true } }) : null;
+let cloudReady=false, syncTimer=null;
+
+function setCloudStatus(s, text){
+  const el=document.getElementById("cloudStatus"); if(!el) return;
+  el.classList.remove("synced","saving","offline");
+  if(s) el.classList.add(s);
+  document.getElementById("cloudStatusText").textContent = text || (s==="synced"?"Synced":s==="saving"?"Saving…":s==="offline"?"Offline":"…");
+}
+function stateToRows(){
+  const rows=[], ids=[];
+  LINES.forEach(L=> state[L.id].agents.forEach(a=>{ ids.push(a.id); rows.push({
+    id:a.id, line:L.id, name:a.name||"", color:a.color||ZIP_COLOR, color_locked:!!a.colorLocked,
+    stock:a.stock||"", velocity:a.velocity||"", comment:a.comment||"", zips:a.zips||[], updated_at:new Date().toISOString()
+  }); }));
+  return { rows, ids };
+}
+function scheduleCloudSync(){ if(!cloudReady||!sb) return; clearTimeout(syncTimer); syncTimer=setTimeout(cloudSync, 1200); }
+async function cloudSync(){
+  if(!cloudReady||!sb) return;
+  setCloudStatus("saving");
+  try{
+    const { rows, ids } = stateToRows();
+    if(rows.length){ const { error } = await sb.from("agents").upsert(rows); if(error) throw error; }
+    let del = sb.from("agents").delete();
+    del = ids.length ? del.not("id","in","("+ids.map(i=>'"'+i+'"').join(",")+")") : del.not("id","is",null);
+    const { error:derr } = await del; if(derr) throw derr;
+    setCloudStatus("synced");
+  }catch(e){ console.error("cloudSync", e); setCloudStatus("offline","Offline — saved locally"); }
+}
+async function cloudLoad(){
+  if(!sb){ setCloudStatus("offline","No cloud"); return; }
+  setCloudStatus("saving","Loading…");
+  try{
+    const { data, error } = await sb.from("agents").select("*");
+    if(error) throw error;
+    if(data && data.length){
+      LINES.forEach(L=> state[L.id] = { agents:[], activeAgentId:null });
+      data.forEach(r=>{ if(state[r.line]) state[r.line].agents.push({
+        id:r.id, name:r.name||"", color:r.color||ZIP_COLOR, colorLocked:!!r.color_locked,
+        stock:r.stock||"", velocity:r.velocity||"", comment:r.comment||"", zips:Array.isArray(r.zips)?r.zips:(r.zips||[])
+      }); });
+      LINES.forEach(L=>ensureDistinctColors(L.id));
+      cloudReady=true; persistLocal();
+      LINES.forEach(L=>renderAgents(L.id)); restyleZips();
+      setCloudStatus("synced");
+    } else {
+      // Cloud is empty — push up whatever is in this browser (first-time migration).
+      const hasLocal = LINES.some(L=>state[L.id].agents.length);
+      cloudReady=true;
+      if(hasLocal){ await cloudSync(); } else { setCloudStatus("synced","Synced"); }
+    }
+  }catch(e){ console.error("cloudLoad", e); cloudReady=false; setCloudStatus("offline","Offline — using local copy"); }
+}
+
+/* ========================= Auth ========================= */
+function showSignIn(){ document.getElementById("authOverlay").classList.remove("hidden"); setTimeout(()=>{ try{document.getElementById("authEmail").focus();}catch(_){} },60); }
+function hideSignIn(){ document.getElementById("authOverlay").classList.add("hidden"); }
+async function afterSignIn(){ hideSignIn(); await cloudLoad(); }
+
+document.getElementById("authForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const err=document.getElementById("authErr"), btn=document.getElementById("authBtn");
+  if(!sb){ err.textContent="Cloud library didn't load — check your internet and refresh."; return; }
+  const email=document.getElementById("authEmail").value.trim();
+  const pass=document.getElementById("authPass").value;
+  err.textContent=""; btn.disabled=true; btn.textContent="Signing in…";
+  try{
+    const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+    if(error){ err.textContent=error.message; btn.disabled=false; btn.textContent="Sign in"; return; }
+    document.getElementById("authPass").value="";
+    await afterSignIn();
+  }catch(ex){ err.textContent="Sign-in failed: "+(ex.message||ex); }
+  btn.disabled=false; btn.textContent="Sign in";
+});
+document.getElementById("signOutBtn").addEventListener("click", async ()=>{
+  if(sb){ try{ await sb.auth.signOut(); }catch(_){} }
+  cloudReady=false; setCloudStatus(null,"Signed out"); showSignIn();
+});
+
+/* ========================= Init ========================= */
+loadPersisted();
+LINES.forEach(L=>ensureDistinctColors(L.id));
+persistLocal();
+buildTabs();
+LINES.forEach(L=>renderAgents(L.id));
+updateTabHighlight();
+updateBoundaryZoom();
+
+(async function initAuth(){
+  if(!sb){ setCloudStatus("offline","No cloud"); showSignIn(); return; }
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){ await afterSignIn(); } else { showSignIn(); }
+  }catch(e){ console.error(e); showSignIn(); }
+})();
+
+/* ========================= Readout ========================= */
+const rLat=document.getElementById("rLat"), rLng=document.getElementById("rLng"), rZoom=document.getElementById("rZoom");
+function updateReadout(){ const c=map.getCenter(), z=map.getZoom(); rLat.textContent=c.lat.toFixed(5); rLng.textContent=c.lng.toFixed(5); rZoom.textContent="z "+z; rZoom.classList.toggle("low", z<13); }
+map.on("move zoom", updateReadout); updateReadout();
+map.on("mousemove", e=>{ rLat.textContent=e.latlng.lat.toFixed(5); rLng.textContent=e.latlng.lng.toFixed(5); });
+</script>
+</body>
+</html>
